@@ -1,4 +1,4 @@
-const C="ghisa-v1";
+const C="ghisa-v2";
 const CORE=["./","./index.html","./manifest.webmanifest","./icon-192.png","./apple-touch-icon.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(CORE)));self.skipWaiting()});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
