@@ -846,24 +846,29 @@ function scDate(s){s=String(s||"").trim();let t=Date.parse(s);if(isFinite(t))ret
   let m=s.match(/(\d{1,2})\s+([a-zà]{3})[a-zà]*\.?\s+(\d{4})\D+(\d{1,2})[:.](\d{2})/i);if(m&&MON2[m[2].toLowerCase()]!=null)return new Date(+m[3],MON2[m[2].toLowerCase()],+m[1],+m[4],+m[5]).getTime();
   m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\D+(\d{1,2})[:.](\d{2})/);if(m)return new Date(m[3].length===2?2000+ +m[3]:+m[3],m[2]-1,+m[1],+m[4],+m[5]).getTime();return NaN}
 function scNum(s){const m=String(s||"").replace(",",".").match(/-?\d+(\.\d+)?/);return m?parseFloat(m[0]):NaN}
-function parseShortcut(text){const now=Date.now(),lines=String(text||"").split(/\r?\n/).map(l=>l.trim()).filter(l=>l.includes("|"));if(!lines.length)return null;
-  const sleep={},hrv=[],rhr=[],kg=[];
-  for(const l of lines){const p=l.split("|").map(x=>x.trim());if(p.length<4)continue;const ty=p[0].toLowerCase(),st=scDate(p[1]),en=scDate(p[2]),val=p[3],src=p[5]||p[4]||"";
-    if(/sonno|sleep/.test(ty)){if(/letto|bed|svegl|awake|veglia/i.test(val)||!(en>st))continue;const mins=(en-st)/6e4;if(mins>16*60)continue;const d=isoDay(en);(sleep[d]=sleep[d]||{})[src]=((sleep[d]||{})[src]||0)+mins}
-    else if(/variabil|hrv/.test(ty)){const v=scNum(val);if(isFinite(v)&&now-(en||st)<36*36e5)hrv.push(v)}
-    else if(/riposo|resting/.test(ty)){const v=scNum(val);if(isFinite(v))rhr.push({t:en||st,v})}
-    else if(/peso|weight|body mass|massa/.test(ty)){let v=scNum(val);if(/lb/i.test(val+p[4]))v*=.45359;if(isFinite(v))kg.push({t:st||en,v})}}
-  const days={},today=isoDay(now),setv=(d,k,v)=>{(days[d]=days[d]||{})[k]=v};
+const ISO_RE=/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:[+-]\d{2}:?\d{2}|Z)?/g;
+function scLine(l){const ds=l.match(ISO_RE);if(ds&&ds.length>=2){const ty=l.slice(0,l.indexOf("|")).trim(),i0=l.indexOf(ds[0]),i1=l.indexOf(ds[1],i0+ds[0].length),rest=l.slice(i1+ds[1].length).replace(/^\s*\|/,"").split("|").map(x=>x.trim());
+    return{ty,st:Date.parse(ds[0]),en:Date.parse(ds[1]),val:rest[0]||"",unit:rest[1]||"",src:rest[2]||rest[1]||""}}
+  const p=l.split("|").map(x=>x.trim());if(p.length<4)return null;return{ty:p[0],st:scDate(p[1]),en:scDate(p[2]),val:p[3],unit:p[4]||"",src:p[5]||""}}
+function parseShortcut(text){const lines=String(text||"").split(/\r?\n/).map(l=>l.trim()).filter(l=>l.includes("|"));if(!lines.length)return null;
+  const sleep={},hrv={},rhr={},kg={};
+  for(const l of lines){const r=scLine(l);if(!r||!isFinite(r.st))continue;const ty=r.ty.toLowerCase(),en=isFinite(r.en)?r.en:r.st;
+    if(/sonno|sleep/.test(ty)){if(/letto|bed|svegl|awake|veglia/i.test(r.val)||!(en>r.st))continue;const mins=(en-r.st)/6e4;if(mins>16*60)continue;const d=isoDay(en),o=sleep[d]=sleep[d]||{};o[r.src]=(o[r.src]||0)+mins}
+    else if(/variabil|hrv/.test(ty)){const v=scNum(r.val);if(isFinite(v)){const d=isoDay(r.st);(hrv[d]=hrv[d]||[]).push(v)}}
+    else if(/riposo|resting/.test(ty)){const v=scNum(r.val);if(isFinite(v))rhr[isoDay(r.st)]=v}
+    else if(/peso|weight|body mass|massa/.test(ty)){let v=scNum(r.val);if(/lb/i.test(r.val+" "+r.unit))v*=.45359;if(isFinite(v))kg[isoDay(r.st)]=Math.round(v*10)/10}}
+  const days={},setv=(d,k,v)=>{(days[d]=days[d]||{})[k]=v};
   for(const d in sleep)setv(d,"sleep",Math.round(Math.max(...Object.values(sleep[d]))));
-  if(hrv.length)setv(today,"hrv",Math.round(hrv.reduce((a,b)=>a+b,0)/hrv.length*10)/10);
-  if(rhr.length){const r=rhr.sort((a,b)=>b.t-a.t)[0];if(now-r.t<48*36e5)setv(today,"rhr",r.v)}
-  if(kg.length){const r=kg.sort((a,b)=>b.t-a.t)[0];setv(isoDay(r.t),"kg",Math.round(r.v*10)/10)}
+  for(const d in hrv)setv(d,"hrv",Math.round(hrv[d].reduce((a,b)=>a+b,0)/hrv[d].length*10)/10);
+  for(const d in rhr)setv(d,"rhr",rhr[d]);for(const d in kg)setv(d,"kg",kg[d]);
   return Object.keys(days).length?days:null}
 async function applyShortcut(text){const days=parseShortcut(text);if(!days){openSheet(`<h3>Non trovo dati di Salute</h3><p class="lead">Negli appunti non c'è il testo del Comando Rapido. Avvia "Ghisa Salute", poi torna qui e tocca di nuovo Incolla.</p><div class="row2"><button class="btn ghost" data-a="scHelp">Come si crea</button><button class="btn primary" data-a="closeSheet">Ok</button></div>`);return}
   const byM={};for(const d in days)(byM[d.slice(0,7)]=byM[d.slice(0,7)]||{})[d]=days[d];
   for(const mo in byM){const old=S.health.get(mo),od=Object.assign({},old&&old.days||{});for(const d in byM[mo])od[d]=Object.assign({},od[d]||{},byM[mo][d]);await put("health",{id:mo,days:od}).catch(()=>{})}
-  LS.set("ghisa.shortcut",Date.now());const t=days[isoDay(Date.now())]||{};closeSheet();
-  toast("Aggiornato: "+[t.sleep!=null?"sonno "+fmtH(t.sleep):"",t.rhr!=null?"battito "+Math.round(t.rhr):"",t.hrv!=null?"HRV "+Math.round(t.hrv):""].filter(Boolean).join(" · ")||"dati salvati")}
+  LS.set("ghisa.shortcut",Date.now());closeSheet();const ks=Object.keys(days).sort(),today=isoDay(Date.now()),sl=ks.filter(d=>days[d].sleep!=null).pop(),rh=ks.filter(d=>days[d].rhr!=null).pop();
+  const lab=d=>d===today?"oggi":fdayShort(d);
+  openSheet(`<h3>Dati di Salute salvati</h3><p class="lead">${ks.length} giorni aggiornati.</p><ul class="mfacts">${sl?`<li><span>Ultimo sonno · ${lab(sl)}</span><b>${fmtH(days[sl].sleep)}</b></li>`:""}${rh?`<li><span>Battito a riposo · ${lab(rh)}</span><b>${Math.round(days[rh].rhr)} bpm</b></li>`:""}${ks.some(d=>days[d].hrv!=null)?"":`<li><span>HRV</span><b>non arrivato</b><em>Garmin non lo passa a Salute</em></li>`}</ul>
+  ${sl!==today?`<p class="note">Il sonno di stanotte non c'è ancora. Apri Garmin Connect per sincronizzare l'orologio, poi rilancia il comando e incolla di nuovo.</p>`:""}<button class="btn primary block" data-a="closeSheet">Ok</button>`)}
 async function pasteHealth(){try{if(navigator.clipboard&&navigator.clipboard.readText){const t=await navigator.clipboard.readText();if(t&&t.includes("|"))return applyShortcut(t)}}catch(e){}
   openSheet(`<h3>Incolla i dati</h3><p class="lead">Tieni premuto nel riquadro e scegli Incolla, poi tocca Usa.</p><textarea class="notearea" id="sctext" rows="5" placeholder="GHISA-SALUTE…"></textarea><div class="row2"><button class="btn ghost" data-a="closeSheet">Annulla</button><button class="btn primary" data-a="scUse">Usa</button></div>`,{focus:"#sctext"})}
 function scHelpSheet(){openSheet(`<h3>Comando Rapido "Ghisa Salute"</h3><p class="lead">Lo crei una volta sola nell'app Comandi. Ogni mattina copia sonno, battito a riposo, HRV e peso, e qui li incolli con un tocco.</p>
