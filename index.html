@@ -449,6 +449,10 @@ const REST_OPTS=[0,30,60,90,120,150,180,240];
 
 const S={ready:false,mode:"local",tab:"train",routines:new Map(),workouts:new Map(),exercises:new Map(),health:new Map(),measures:new Map(),photos:new Map(),mMetric:"kg",sumOff:0,anyway:false,cmpA:null,cmpB:null,hMetric:"sleep",hPeriod:"4w",active:null,logOpen:false,restEnd:0,restTotal:0,hist:null,chart:"workouts",period:"3m",recType:null,exMetric:"e1rm",showAllEx:false};
 let DB=null,DL=null,ASSETS=null,PHOTO_FOR="",STANDALONE=false;
+const NATIVE=(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.ghisa)||null;
+function native(cmd,o){if(!NATIVE)return;try{NATIVE.postMessage(Object.assign({cmd},o||{}))}catch(e){}}
+let lastNR=-1;
+const scName=()=>LS.get("ghisa.scName")||"Ghisa salute";
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -707,7 +711,7 @@ function recCard(x,lab){const rd=readiness(),{add}=extraSets(x.template),bn=bala
   const dueTxt=x.forced?`Non alleni le gambe da ${Math.floor(x.days)} giorni: questa settimana tocca a loro`:`Ultimo allenamento ${TYPES[x.type].toLowerCase()} ${daysTxt(x.days)}, di solito lo fai ogni ${x.gap} giorni`;
   return`<section class="card rec" aria-label="Allenamento consigliato"><div class="rec-top"><span class="label">${lab}</span><span class="tdot" style="background:var(--c-${x.type})"></span></div>
     <h2>${esc(x.label)}</h2><p class="muted rec-why">${dueTxt}${!x.forced&&x.days>x.gap*1.4&&x.days>=1?" · sei un po' in ritardo":""}.</p>
-    ${rd?`<button class="readyline ${rd.level}" data-a="tab" data-v="health"><i></i><span><b>${rd.title}.</b> ${rd.items.map(z=>z.l.replace(" stanotte","")+" "+z.v).join(" · ")}</span></button>`:LS.get("ghisa.shortcut")&&!hasToday?`<button class="readyline" data-a="hPaste"><i></i><span><b>Incolla i dati di stanotte</b> dopo aver avviato il Comando Rapido "Ghisa Salute".</span></button>`:""}
+    ${rd?`<button class="readyline ${rd.level}" data-a="tab" data-v="health"><i></i><span><b>${rd.title}.</b> ${rd.items.map(z=>z.l.replace(" stanotte","")+" "+z.v).join(" · ")}</span></button>`:LS.get("ghisa.shortcut")&&!hasToday?`<button class="readyline" data-a="hPaste"><i></i><span><b>${NATIVE?"Aggiorna i dati di stanotte":"Incolla i dati di stanotte"}</b> ${NATIVE?"da Salute con un tocco.":"dopo aver avviato il Comando Rapido."}</span></button>`:""}
     ${bn?`<p class="coach">${esc(bn)}</p>`:""}
     ${stalled>=Math.max(2,Math.ceil(plans.filter(Boolean).length/2))?`<p class="coach warn">Molti esercizi sono fermi da qualche settimana: oggi sono in scarico. Se ti senti stanco da giorni, valuta una settimana intera più leggera.</p>`:""}
     <ul class="recl">${x.template.map((n,i)=>{const pl=plans[i];return`<li><button data-a="planWhyName" data-v="${esc(n)}" data-x="${add[i]!=null?1:0}">${thumb(n)}<span class="n"><b>${esc(n)}</b><span class="num">${pl?esc(setsTxt(pl.work))+" kg":"Prima volta: scegli tu il carico"}</span></span>${pl?`<span class="decs"><span class="dec ${pl.dec}">${esc(pl.badge)}</span>${add[i]!=null?'<span class="dec extra">+1 serie</span>':""}</span>`:""}</button></li>`}).join("")}</ul>
@@ -869,7 +873,7 @@ async function applyShortcut(text){const days=parseShortcut(text);if(!days){open
   const lab=d=>d===today?"oggi":fdayShort(d);
   openSheet(`<h3>Dati di Salute salvati</h3><p class="lead">${ks.length} giorni aggiornati.</p><ul class="mfacts">${sl?`<li><span>Ultimo sonno · ${lab(sl)}</span><b>${fmtH(days[sl].sleep)}</b></li>`:""}${rh?`<li><span>Battito a riposo · ${lab(rh)}</span><b>${Math.round(days[rh].rhr)} bpm</b></li>`:""}${ks.some(d=>days[d].hrv!=null)?"":`<li><span>HRV</span><b>non arrivato</b><em>Garmin non lo passa a Salute</em></li>`}</ul>
   ${sl!==today?`<p class="note">Il sonno di stanotte non c'è ancora. Apri Garmin Connect per sincronizzare l'orologio, poi rilancia il comando e incolla di nuovo.</p>`:""}<button class="btn primary block" data-a="closeSheet">Ok</button>`)}
-async function pasteHealth(){try{if(navigator.clipboard&&navigator.clipboard.readText){const t=await navigator.clipboard.readText();if(t&&t.includes("|"))return applyShortcut(t)}}catch(e){}
+async function pasteHealth(){if(NATIVE){toast("Avvio il Comando Rapido…");native("runShortcut",{name:scName()});return}try{if(navigator.clipboard&&navigator.clipboard.readText){const t=await navigator.clipboard.readText();if(t&&t.includes("|"))return applyShortcut(t)}}catch(e){}
   openSheet(`<h3>Incolla i dati</h3><p class="lead">Tieni premuto nel riquadro e scegli Incolla, poi tocca Usa.</p><textarea class="notearea" id="sctext" rows="5" placeholder="GHISA-SALUTE…"></textarea><div class="row2"><button class="btn ghost" data-a="closeSheet">Annulla</button><button class="btn primary" data-a="scUse">Usa</button></div>`,{focus:"#sctext"})}
 function scHelpSheet(){openSheet(`<h3>Comando Rapido "Ghisa Salute"</h3><p class="lead">Lo crei una volta sola nell'app Comandi. Ogni mattina copia sonno, battito a riposo, HRV e peso, e qui li incolli con un tocco.</p>
   <ol class="steps">
@@ -885,8 +889,8 @@ function scHelpSheet(){openSheet(`<h3>Comando Rapido "Ghisa Salute"</h3><p class
   <p class="note">Poi apri Ghisa e tocca <b>Incolla dati di Salute</b>. Se usi Garmin, i dati arrivano a Salute dall'app Garmin Connect e funziona allo stesso modo.</p>
   <button class="btn primary block" data-a="closeSheet">Ok</button>`,{tall:true})}
 function shortcutCard(){const ls=LS.get("ghisa.shortcut"),today=healthDays().get(isoDay(Date.now()));
-  return`<div class="card sccard" style="margin-top:12px"><div class="sctop"><div><b>Dati di stanotte</b><span class="muted">${today&&(today.sleep!=null||today.rhr!=null)?"Aggiornati per oggi":ls?"Avvia il Comando Rapido, poi incolla":"Con un Comando Rapido, ogni mattina in un tocco"}</span></div><button class="btn small primary" data-a="hPaste">Incolla</button></div>
-  <button class="linkbtn" data-a="scHelp">${ls?"Rivedi come funziona il Comando Rapido":"Come creare il Comando Rapido"}</button></div>`}
+  return`<div class="card sccard" style="margin-top:12px"><div class="sctop"><div><b>Dati di stanotte</b><span class="muted">${today&&(today.sleep!=null||today.rhr!=null)?"Aggiornati per oggi":NATIVE?"Un tocco: avvia il comando e torna qui":ls?"Avvia il Comando Rapido, poi incolla":"Con un Comando Rapido, ogni mattina in un tocco"}</span></div><button class="btn small primary" data-a="hPaste">${NATIVE?"Aggiorna":"Incolla"}</button></div>
+  <button class="linkbtn" data-a="scHelp">${ls?"Rivedi come funziona il Comando Rapido":"Come creare il Comando Rapido"}</button>${NATIVE?`<div class="field" style="margin:10px 0 0"><label class="label" for="scname">Nome del comando</label><input id="scname" data-in="scname" value="${esc(scName())}"></div><button class="linkbtn" data-a="hPasteManual">Incolla a mano</button>`:""}</div>`}
 function vBody(){let h=`<h1 class="h1">Corpo</h1><p class="sub">Recupero, misure, foto e dati di Salute</p>`;const rd=readiness();
   if(rd)h+=`<section class="card ready ${rd.level}" style="margin-top:16px"><div class="label">Recupero di oggi</div><h2>${rd.title}</h2><p>${rd.text}</p><div class="ritems">${rd.items.map(x=>`<div><span>${x.l}</span><b class="num">${x.v}</b><em class="pill ${x.st==="low"?"low":x.st==="good"?"ok":""}">${x.b?"media "+x.b:x.st==="low"?"poco":"ok"}</em></div>`).join("")}</div></section>`;
   h+=shortcutCard()+measuresSection()+photosSection()+`<div class="sec"><h2>Apple Salute</h2></div>`+healthBody();return h}
@@ -909,7 +913,7 @@ async function remove(col,id){S[col].delete(id);bump();schedule();if(S.mode==="d
 function dbErr(e){const c=e&&e.code;toast(c==="quota_exceeded"?"Spazio esaurito: elimina qualche vecchio allenamento.":c==="resource_exhausted"?"Troppe operazioni in poco tempo, riprova tra un attimo.":"Salvataggio non riuscito. Controlla la connessione e riprova.")}
 
 let activeTimer=null,activeWriting=false,activePending=false;
-function saveActive(){if(S.active)S.active.updatedAt=Date.now();LS.set("ghisa.active",{active:S.active,updatedAt:Date.now(),restEnd:S.restEnd,restTotal:S.restTotal});if(S.mode!=="db")return;clearTimeout(activeTimer);activeTimer=setTimeout(flushActive,1200)}
+function saveActive(){if(NATIVE&&S.restEnd!==lastNR){lastNR=S.restEnd;native("rest",{end:S.restEnd||0,body:S.active?"Prossima serie: "+curExercise():"Prossima serie"})}if(S.active)S.active.updatedAt=Date.now();LS.set("ghisa.active",{active:S.active,updatedAt:Date.now(),restEnd:S.restEnd,restTotal:S.restTotal});if(S.mode!=="db")return;clearTimeout(activeTimer);activeTimer=setTimeout(flushActive,1200)}
 async function flushActive(){if(activeWriting){activePending=true;return}activeWriting=true;try{await DB.doc("state/active").set({active:S.active?clean(S.active):null,updatedAt:Date.now()})}catch(e){}activeWriting=false;if(activePending){activePending=false;flushActive()}}
 
 async function init(){
@@ -921,7 +925,7 @@ async function init(){
   try{ASSETS=window.claude&&window.claude.use?await window.claude.use("assets"):null}catch(e){ASSETS=null}
   if(!db){S.mode="local";
     if(!(window.claude&&window.claude.use)){STANDALONE=true;
-      DL={async save({filename,data}){const blob=data instanceof Blob?data:new Blob([data],{type:"application/json"}),file=new File([blob],filename,{type:blob.type||"application/json"});
+      DL={async save({filename,data}){const blob=data instanceof Blob?data:new Blob([data],{type:"application/json"});if(NATIVE){native("share",{filename,text:typeof data==="string"?data:await blob.text()});return{status:"saved"}}const file=new File([blob],filename,{type:blob.type||"application/json"});
         if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file]});return{status:"saved"}}catch(e){if(e&&e.name==="AbortError"){const er=new Error("declined");er.code="declined";throw er}}}
         const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},1500);return{status:"saved"}}};
       ASSETS={async upload(blob){const url=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);r.readAsDataURL(blob)});return{id:uid(),url,sizeBytes:blob.size,contentType:blob.type}}};
@@ -1083,14 +1087,14 @@ function dataCard(){return`<div class="sec"><h2>I tuoi dati</h2></div><div class
    <button class="btn primary block" data-a="import">Importa da Hevy o da un backup</button>
    <button class="btn ghost block" data-a="export">Esporta backup</button></div>
    <p class="note">Da Hevy: nelle impostazioni esporta gli allenamenti come file CSV, poi caricalo qui. Gli allenamenti già importati non vengono duplicati.</p>
-   <p class="note">Versione app: 21 ottobre, 14:40.</p>
+   <p class="note">Versione app: 22 ottobre${NATIVE?" · app per iPhone":""}.</p>
    <p class="note">${S.mode==="db"?"I dati sono salvati nel tuo account Claude: li ritrovi aprendo questa pagina da qualsiasi dispositivo.":"I dati restano solo su questo telefono: se elimini l'app dalla schermata Home o cancelli i dati di Safari, li perdi. Esporta un backup ogni due settimane e salvalo su iCloud Drive."}</p></div>`}
 
 /* ================= mini bar + rest ================= */
 function curExercise(){const a=S.active;if(!a)return"";for(const e of a.exercises)if(e.sets.some(s=>!s.done))return e.name;return a.exercises.length?a.exercises[a.exercises.length-1].name:"Nessun esercizio"}
 function renderMini(){const m=$("#mini");if(!S.active||S.logOpen||PAGE){m.hidden=true;return}m.hidden=false;
   m.innerHTML=`<div class="in"><button class="t" data-a="openLog"><b><i class="dot"></i>Allenamento <span class="num" data-clock style="display:inline;opacity:1;font-size:15px">${clock(Date.now()-S.active.start)}</span></b><span data-minisub>${esc(curExercise())}</span></button><button class="iconbtn" data-a="discardAsk" aria-label="Scarta allenamento" style="color:var(--danger)">${I.trash}</button></div>`}
-function startRest(sec){if(!sec)return;S.restTotal=sec;S.restEnd=Date.now()+sec*1000;S.beeped=false;saveActive();renderRest()}
+function startRest(sec){if(!sec)return;if(NATIVE&&!LS.get("ghisa.np")){LS.set("ghisa.np",1);native("notifPerm")}S.restTotal=sec;S.restEnd=Date.now()+sec*1000;S.beeped=false;saveActive();renderRest()}
 function renderRest(){const r=$("#rest");if(!S.restEnd||!S.logOpen){r.hidden=true;return}r.hidden=false;
   r.innerHTML=`<div class="in"><div class="t"><span>Recupero</span><b class="num" data-rest>${clock(S.restEnd-Date.now())}</b></div><button class="btn small" data-a="restAdd" data-v="-15">−15</button><button class="btn small" data-a="restAdd" data-v="15">+15</button><button class="btn small" data-a="restSkip">Salta</button><div class="p" data-restbar></div></div>`;tick()}
 let AC=null;function beep(){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const t=AC.currentTime;[0,.22,.44].forEach((d,i)=>{const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=i===2?1175:880;g.gain.setValueAtTime(.0001,t+d);g.gain.exponentialRampToValueAtTime(.25,t+d+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d+.18);o.connect(g).connect(AC.destination);o.start(t+d);o.stop(t+d+.2)})}catch(e){}try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
@@ -1141,7 +1145,7 @@ function toggleCheck(i,j){const e=S.active.exercises[i],s=e.sets[j];
     if(s.r==="")s.r=s.tr!=null?String(s.tr):pv?String(pv.r??""):(j>0?e.sets[j-1].r:"");
     if(s.r===""||num(s.r)<=0){toast("Scrivi quante ripetizioni hai fatto");const el=document.getElementById(`r-${e.uid}-${j}`);el&&el.focus();return}
     if(s.w==="")s.w="0";
-    s.done=true;saveActive();renderLog();if(s.t!=="w"||true)startRest(e.rest);
+    s.done=true;native("haptic");saveActive();renderLog();if(s.t!=="w"||true)startRest(e.rest);
   }else{s.done=false;saveActive();renderLog()}
   renderMini();
 }
@@ -1268,7 +1272,7 @@ async function doExport(){const data=JSON.stringify({app:"ghisa",version:1,expor
   openSheet(`<h3>Copia il backup</h3><p class="lead">Non posso scaricare il file qui: copia il testo e salvalo in una nota.</p><textarea class="notearea" id="exptxt" rows="6" readonly>${esc(data)}</textarea><button class="btn primary block" style="margin-top:8px" data-a="copyExport">Copia</button>`,{tall:true})}
 
 /* ================= wake lock + toast ================= */
-let WL=null;async function wake(on){try{if(on&&S.active&&"wakeLock" in navigator&&document.visibilityState==="visible"){if(!WL)WL=await navigator.wakeLock.request("screen");WL&&WL.addEventListener&&WL.addEventListener("release",()=>{WL=null})}else if(!on&&WL){await WL.release();WL=null}}catch(e){WL=null}}
+let WL=null;async function wake(on){if(NATIVE){native("awake",{on:!!(on&&S.active)});return}try{if(on&&S.active&&"wakeLock" in navigator&&document.visibilityState==="visible"){if(!WL)WL=await navigator.wakeLock.request("screen");WL&&WL.addEventListener&&WL.addEventListener("release",()=>{WL=null})}else if(!on&&WL){await WL.release();WL=null}}catch(e){WL=null}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){wake(!!S.active);tick()}});
 let TT=0;function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(TT);TT=setTimeout(()=>t.hidden=true,2600)}
 
@@ -1358,7 +1362,8 @@ const A={
   photoMenu(el){const id=el.dataset.v,p=S.photos.get(id);if(!p)return;openSheet(`<h3>Foto del ${fdayLong(p.date)}</h3><div class="menu"><button data-a="phA" data-v="${esc(id)}">Usa come "prima"</button><button data-a="phB" data-v="${esc(id)}">Usa come "dopo"</button><button class="danger" data-a="phDel" data-v="${esc(id)}">${I.trash}Elimina foto</button></div>`)},
   phA(el){S.cmpA=el.dataset.v;closeSheet();renderMain()},phB(el){S.cmpB=el.dataset.v;closeSheet();renderMain()},
   phDel(el){const id=el.dataset.v;remove("photos",id);PHC.delete(id);IDB.set("photo:"+id,null).catch(()=>{});if(S.cmpA===id)S.cmpA=null;if(S.cmpB===id)S.cmpB=null;closeSheet();toast("Foto eliminata")},
-  hPaste(){pasteHealth()},scUse(){applyShortcut(($("#sctext")||{}).value||"")},scHelp(){scHelpSheet()},
+  hPaste(){pasteHealth()},
+  hPasteManual(){openSheet(`<h3>Incolla i dati</h3><p class="lead">Tieni premuto nel riquadro e scegli Incolla, poi tocca Usa.</p><textarea class="notearea" id="sctext" rows="5" placeholder="Sleep | …"></textarea><div class="row2"><button class="btn ghost" data-a="closeSheet">Annulla</button><button class="btn primary" data-a="scUse">Usa</button></div>`,{focus:"#sctext"})},scUse(){applyShortcut(($("#sctext")||{}).value||"")},scHelp(){scHelpSheet()},
   planWhyName(el){planSheet(el.dataset.v)},
   period(el){S.period=el.dataset.v;S.showAllEx=false;renderMain()},
   exMetric(el){S.exMetric=el.dataset.v;renderPage()},
@@ -1384,6 +1389,7 @@ document.addEventListener("input",e=>{const el=e.target,k=el.dataset&&el.dataset
   if(k==="w"||k==="r"){const s=S.active.exercises[+el.dataset.i].sets[+el.dataset.j];const v=el.value.replace(/[^\d.,]/g,"");if(v!==el.value)el.value=v;s[k]=v;if(s.done)updLogStats();saveActive()}
   else if(k==="note"){S.active.exercises[+el.dataset.i].note=el.value;saveActive()}
   else if(k==="rname"&&PAGE)PAGE.r.name=el.value;
+  else if(k==="scname")LS.set("ghisa.scName",el.value.trim());
   else if(k==="pq"){PK.q=el.value;$("#plist").innerHTML=pickerList()}});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&SHEET)closeSheet()});
 $("#healthin").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];if(f)importHealth(f)});
@@ -1391,6 +1397,8 @@ $("#bodyphoto").addEventListener("change",e=>{const f=e.target.files&&e.target.f
 $("#photoin").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f)});
 $("#filein").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];if(f)importFile(f)});
 
+window.ghisaNativeHealth=t=>applyShortcut(t);
+window.ghisaNative=c=>toast(c==="noShortcuts"?"Non riesco ad aprire l'app Comandi.":"Il Comando Rapido non è andato a buon fine. Controlla che il nome sia \""+scName()+"\".");
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 renderAll();
 init().then(()=>{if(S.active&&!S.logOpen)renderMini()});
